@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>个推一键登录服务器验证之golang版代码</title>
+    <meta name="keywords" content="samblog" />
+    <meta name="description" content="" />
+    <<template "_header.html" .>>
+    <link href="/static/prism/prism.css?v=<<.ver>>" rel="stylesheet">
+</head>
+<body class="antialiased">
+<div class="page">
+    <<template "_nav.html" .>>
+    <<template "_menus.html" .>>
+    <div class="content">
+        <div class="container-xl">
+            <!-- Page title -->
+            <div class="page-header">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                            <ol class="breadcrumb breadcrumb-alternate" aria-label="breadcrumbs">
+                                <li class="breadcrumb-item"><a href="/">首页</a></li>
+                                <li class="breadcrumb-item"><a href="/category/golang">运维</a></li>
+                                <li class="breadcrumb-item active" aria-current="page">文章详情</li>
+                            </ol>
+                    </div>
+                </div>
+            </div>
+            <div class="row justify-content-center">
+                <div class="col-lg-9">
+                    <div class="card card-lg">
+                        <div class="card-body p-md-5">
+                            <div  class="markdown-body">
+                                <h2 class="h1 mt-0 mb-3 pb-3 pt-0">个推一键登录服务器验证之golang版代码</h2>
+                                <div class="about mb-4">
+                                    <span class="badge bg-blue">行业</span>
+                                    <span class="badge bg-azure">202002</span>
+                                    <span class="badge bg-pink">普通</span>
+                                    <span class="badge bg-cyan">976</span>
+                                    <span class="badge bg-gray">2020-02-12 18:44:27</span>
+                                </div>
+                                <div class="card">
+                                    <div class="card-status-left bg-green"></div>
+                                    <div class="card-body">
+                                        <p>个推(个验）一键登录服务中，没有golang的服务器端代码，自己参考java版本的，写了一个。</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="markdown-body mt-4">
+                                <h3 id="h3--"><a name="个推一键登录：" class="reference-link"></a><span class="header-link octicon octicon-link"></span>个推一键登录：</h3><p>项目介绍：</p>
+                                <p><a href="http://docs.getui.com/geyan/elogin/">http://docs.getui.com/geyan/elogin/</a></p>
+                                <p>接入指南之服务器端(包括其他语言的关键代码)：<br><a href="http://docs.getui.com/geyan/server/">http://docs.getui.com/geyan/server/</a></p>
+                                <h3 id="h3-golang-"><a name="golang代码：" class="reference-link"></a><span class="header-link octicon octicon-link"></span>golang代码：</h3><p><em>签名函数</em></p>
+                                <pre><code class="lang-go">//signature 签名
+//返回sign和timestamp
+func signature(appKey string, masterSecret string) (sign string, timestamp int) {
+    timestamp = int(time.Now().Unix() * 1000)
+    original := fmt.Sprintf(&quot;%v%v%v&quot;, appKey, timestamp, masterSecret)
+    hash := sha256.New()
+    hash.Write([]byte(original))
+    sum := hash.Sum(nil)
+    sign = fmt.Sprintf(&quot;%x&quot;, sum)
+    return
+}
+</code></pre>
+                                <p><em>解密手机号</em></p>
+                                <pre><code class="lang-go">//decryptCode 解码手机号
+func decryptCode(pn, key string) (ret string, err error) {
+    if len(pn) == 0 || len(key) == 0 {
+        err = fmt.Errorf(&quot;却少参数&quot;)
+        return
+    }
+    //长度大于16，只取16位
+    if len(key) &gt; 16 {
+        key = key[:16]
+    }
+    ret, err = utils.AESDecrypt(pn, key)
+    return
+}
+</code></pre>
+                                <p><em>AES CBC 编/解密完整代码</em></p>
+                                <pre><code class="lang-go">package utils
+
+import (
+    &quot;bytes&quot;
+    &quot;crypto/aes&quot;
+    &quot;crypto/cipher&quot;
+    &quot;encoding/hex&quot;
+)
+
+const (
+    //iv 值
+    iv = &quot;0000000000000000&quot;
+)
+
+//AESEncrypt AES CBC encrypt
+func AESEncrypt(plainText string, key string) string {
+    bKey := []byte(key)
+    bIV := []byte(iv)
+    bPlainText := PKCS5Padding([]byte(plainText), aes.BlockSize, len(plainText))
+    block, _ := aes.NewCipher(bKey)
+    cipherText := make([]byte, len(bPlainText))
+    mode := cipher.NewCBCEncrypter(block, bIV)
+    mode.CryptBlocks(cipherText, bPlainText)
+    //注意：此处使用hex编码
+    return hex.EncodeToString(cipherText)
+}
+
+//PKCS5Padding PKCS5Padding
+func PKCS5Padding(cipherText []byte, blockSize int, after int) []byte {
+    padding := blockSize - len(cipherText)%blockSize
+    padText := bytes.Repeat([]byte{byte(padding)}, padding)
+    return append(cipherText, padText...)
+}
+
+//AESDecrypt 解码
+func AESDecrypt(decodeStr string, key string) (string, error) {
+    bKey := []byte(key)
+    bIV := []byte(iv)
+    //注意：此处使用使用hex解码
+    decodeBytes, err := hex.DecodeString(decodeStr)
+    if err != nil {
+        return &quot;&quot;, err
+    }
+    block, err := aes.NewCipher(bKey)
+    if err != nil {
+        return &quot;&quot;, err
+    }
+    blockMode := cipher.NewCBCDecrypter(block, bIV)
+    origData := make([]byte, len(decodeBytes))
+
+    blockMode.CryptBlocks(origData, decodeBytes)
+    origData = PKCS5UnPadding(origData)
+    return string(origData), nil
+}
+
+//PKCS5UnPadding PKCS5UnPadding
+func PKCS5UnPadding(origData []byte) []byte {
+    length := len(origData)
+    unPadding := int(origData[length-1])
+    return origData[:(length - unPadding)]
+}
+</code></pre>
+                                <p><em>加密解测试</em></p>
+                                <pre><code class="lang-go">//TestEncrypt 加密
+func TestEncrypt(t *testing.T) {
+    key := &quot;4OeK4LK1CVAlvCw1&quot;
+    phone := &quot;13888889999&quot;
+    str := utils.AESEncrypt(phone, key)
+    fmt.Println(&quot;encrypt:&quot;, phone, str)
+}
+
+//TestDecrypt 解密
+func TestDecrypt(t *testing.T) {
+    pn := &quot;83b180cc035298f0e285aeeb4901678c&quot;
+    key := &quot;4OeK4LK1CVAlvCw1&quot;
+    phone, err := utils.AESDecrypt(pn, key)
+    if err != nil {
+        t.Fatal(&quot;fail&quot;, err)
+    }
+    fmt.Println(&quot;decrypt:&quot;, pn, phone)
+}
+</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-lg-block col-lg-3 order-lg-1 mb-4">
+                    <div class="sticky-top">
+                        <div class="card">
+                            <div class="card-body p-4 py-5 text-center">
+                                <a href="#">
+                                    <span class="avatar avatar-xl mb-4" style="background-image: url(/static/avatars/002m.jpg)"></span>
+                                </a>
+                                <h3 class="mb-0"><a href="#">新月却泽滨</a></h3>
+                                <p class="text-muted">REG: 2020-10-10 13:50</p>
+                                <p class="mb-3">
+                                    <span class="badge bg-blue-lt">Developer</span>
+                                </p>
+                             </div>
+                            <div class="progress card-progress">
+                                <div class="progress-bar bg-azure" style="width: 80%" role="progressbar" aria-valuenow="80" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <h3 class="card-title">
+                                    页内导航
+                                </h3>
+                                <ul class="list-unstyled">
+                                    <li class="toc-entry toc-h2"><a href="#default-markup">环境介绍</a></li>
+                                    <li class="toc-entry toc-h2"><a href="#base-code">基础环境</a></li>
+                                    <li class="toc-entry toc-h2"><a href="#soft-color-badges">安装kubelet</a></li>
+                                    <li class="toc-entry toc-h2"><a href="#links">安装doker-ce</a></li>
+                                    <li class="toc-entry toc-h2"><a href="#publish-a-app">配置高可用</a>
+                                        <ul>
+                                            <li class="toc-entry toc-h4"><a href="#badge-add-ons">初始化master1</a></li>
+                                            <li class="toc-entry toc-h4"><a href="#badge-avatars">安装flannel网络插件</a></li>
+                                            <li class="toc-entry toc-h4"><a href="#badge-avatars">加入node1 node3</a></li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<<template "_footer.html" .>>
